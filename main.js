@@ -19,12 +19,34 @@ class Vector2
     }
 }
 //#endregion
+const samplePuzzles = [
+    [
+        [0,4,0,0,0,0,0,0],
+        [0,0,0,3,0,0,0,0],
+        [4,4,0,0,0,0,4,0],
+        [0,0,0,0,0,0,0,0],
+        [3,0,0,4,0,0,0,0],
+        [3,0,3,0,0,0,0,4],
+        [0,0,0,0,0,3,3,0],
+        [0,4,0,0,4,0,3,0],
+    ],
+    [
+        [0,0,4,0,0,3,0,0],
+        [0,0,4,0,4,0,4,0],
+        [4,0,0,0,0,0,0,0],
+        [0,0,0,3,0,4,0,0],
+        [3,0,3,0,0,0,0,0],
+        [0,4,0,0,3,0,0,4],
+        [0,0,0,4,3,0,0,4],
+        [0,0,0,3,0,3,0,0],
+    ], //seed 8x8dt#155504338199982 (trivial)
+];
 const cellGrid = document.getElementById("cellGrid");
 const solverSquare = document.getElementById("solverSquare");
 const cellValues = []; //a cell value of 0 is unfilled; 1 is black, 2 is white, 3 is permanent black, 4 is permanent white
 const gridSize = 8;
 const cellCount = gridSize * gridSize;
-const colors = [0, 1, 2, 3, 4]; //
+const colors = [0, 1, 2, 3, 4];
 const [empty, black, white, blackPermanent, whitePermanent] = colors;
 const oppositeColors = new Map([
     [black, white],
@@ -39,29 +61,23 @@ const directions =
     new Vector2(1, 0),
     new Vector2(0, 1)
 ];
-const left = directions[0];
-const up = directions[1];
-const right = directions[2];
-const down = directions[3];
+const [left, up, right, down] = directions;
 var solverPosition = 0;
 
 createGrid();
-setPuzzle();
+setPuzzle(samplePuzzles[1]);
 //testSolution();
 
 
 //#region functions
 const getColumn = columnX => cellValues[columnX];
 const getRow = rowY => cellValues.map(column => column[rowY]);
-const areColorsEqual = (color1, color2) => {
+
+function areColorsEqual(color1, color2)
+{
     if (color1 + color2 === 0) { return true; }
     if (color1 === 0 || color2 === 0) { return false; }
     return color1 % 2 === color2 % 2;
-}
-const makeValueNonPermanent = value => {
-    if (value === whitePermanent) { return white; }
-    if (value === blackPermanent) { return black; }
-    return value;
 }
 
 function createGrid() 
@@ -80,25 +96,13 @@ function createGrid()
     }
 }
 
-function setPuzzle()
+function setPuzzle(puzzle)
 {
-    let puzzle1 = 
-    [
-        [0,4,0,0,0,0,0,0],
-        [0,0,0,3,0,0,0,0],
-        [4,4,0,0,0,0,4,0],
-        [0,0,0,0,0,0,0,0],
-        [3,0,0,4,0,0,0,0],
-        [3,0,3,0,0,0,0,4],
-        [0,0,0,0,0,3,3,0],
-        [0,4,0,0,4,0,3,0],
-    ];
-
-    for (let x = 0; x < puzzle1[0].length; x++)
+    for (let x = 0; x < puzzle[0].length; x++)
     {
-        for (let y = 0; y < puzzle1.length; y++)
+        for (let y = 0; y < puzzle.length; y++)
         {
-            setCellPermanent(x, y, puzzle1[y][x]);
+            setCellPermanent(x, y, puzzle[y][x]);
         }
     }
 }
@@ -157,25 +161,9 @@ function solveAtIndex(solverPosition)
     let colorHere = getColorAt(x, y);
     let neighborhoodValues = directions.map(direction => getValuesInDirection(position, direction));
     let valToSet = 0;
-    neighborhoodValues.map(valuePair => {
-        let [val1, val2] = valuePair;
-        let equal = areColorsEqual(val1, val2);
-        if (valToSet === 0 && valuePair.length === 2 && equal && val1 !== 0)
-        {
-            //console.log(val1 + " === " + val2);
-            valToSet = oppositeColors.get(val1);
-        }
-    });
-    if (valToSet === 0)
-    {
-        let neighborValues = neighborhoodValues.map(item => {
-            if (item.length > 0) { return item[0]; }
-            return undefined;
-        })
-        let [left, top, right, bot] = neighborValues;
-        if (left + right > 0 && areColorsEqual(left, right)) { valToSet = oppositeColors.get(left); }
-        if (top + bot > 0 && areColorsEqual(top, bot)) { valToSet = oppositeColors.get(top); }
-    }
+    valToSet = deduceFromDoubleAdjacent(neighborhoodValues);
+    if (valToSet === 0) { valToSet = deduceFromFlanking(neighborhoodValues); }
+    if (valToSet === 0) { valToSet = deduceFromColorCount(getColumn(x), getRow(y)); }
     if (valToSet !== 0)
     {
         console.log("Deduced " + valToSet);
@@ -190,6 +178,64 @@ function solveAtIndex(solverPosition)
     //{
     //    //set to white
     //}
+}
+
+function deduceFromDoubleAdjacent(neighborhoodValues)
+{
+    let valToSet = 0;
+
+    neighborhoodValues.map(valuePair => {
+        let [val1, val2] = valuePair;
+        let equal = areColorsEqual(val1, val2);
+        if (valToSet === 0 && valuePair.length === 2 && equal && val1 !== 0)
+        {
+            valToSet = oppositeColors.get(val1);
+        }
+    });
+
+    return valToSet;
+}
+
+function deduceFromFlanking(neighborhoodValues)
+{
+    let valToSet = 0;
+    let neighborValues = neighborhoodValues.map(item => {
+        if (item.length > 0) { return item[0]; }
+        return undefined;
+    })
+    let [left, top, right, bot] = neighborValues;
+    if (left + right > 0 && areColorsEqual(left, right)) { valToSet = oppositeColors.get(left); }
+    if (top + bot > 0 && areColorsEqual(top, bot)) { valToSet = oppositeColors.get(top); }
+    return valToSet;
+}
+
+function deduceFromColorCount(column, row)
+{
+    console.log(`Column length ${column.length}, row length ${row.length}`);
+    let blackInColumn = column.reduce((accumulator, value) => {
+        if (areColorsEqual(value, black)) { accumulator++; }
+        return accumulator;
+    }, 0);
+    let blackInRow = row.reduce((accumulator, value) => {
+        if (areColorsEqual(value, black)) { accumulator++; }
+        return accumulator;
+    }, 0);
+    let whiteInColumn = column.reduce((accumulator, value) => {
+        if (areColorsEqual(value, white)) { accumulator++; }
+        return accumulator;
+    }, 0);
+    let whiteInRow = row.reduce((accumulator, value) => {
+        if (areColorsEqual(value, white)) { 
+            console.log(value + " is white"); 
+            accumulator++; 
+        }
+        return accumulator;
+    }, 0);
+    console.log(`Black in column: ${blackInColumn}; black in row: ${blackInRow}; whiteInColumn: ${whiteInColumn}; whiteInRow: ${whiteInRow}`);
+
+    if (blackInColumn === gridSize / 2 || blackInRow === gridSize / 2) { return white; }
+    if (whiteInColumn === gridSize / 2 || whiteInRow === gridSize / 2) { return black; }
+    return 0;
 }
 
 function getValuesInDirection(startPos, direction, count = 2)
