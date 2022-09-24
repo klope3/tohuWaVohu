@@ -1,0 +1,58 @@
+body {
+    background: black;
+}
+
+#master {
+    position: relative;
+}
+
+.cellGrid {
+    display: grid;
+    grid-template-columns: repeat(8, 40px);
+    grid-template-rows: repeat(8, 40px);
+}
+
+.cell {
+    background: gray;
+    width: 38px;
+    height: 38px;
+    display: flex;
+}
+
+.cell div {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    margin: auto;
+}
+
+.white div {
+    background: white;
+}
+
+.black div {
+    background: black;
+}
+
+.whitePermanent div,
+.blackPermanent div {
+    border: 2px dotted red;
+}
+
+.whitePermanent div {
+    background: white;
+}
+
+.blackPermanent div {
+    background: black;
+}
+
+.solverSquare {
+    border: 3px solid red;
+    width: 35px;
+    height: 35px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+}
