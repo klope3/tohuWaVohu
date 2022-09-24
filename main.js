@@ -62,7 +62,7 @@ const directions =
     new Vector2(0, 1)
 ];
 const [left, up, right, down] = directions;
-var solverPosition = 0;
+let solverPosition = 0;
 
 createGrid();
 setPuzzle(samplePuzzles[1]);
@@ -78,6 +78,17 @@ function areColorsEqual(color1, color2)
     if (color1 + color2 === 0) { return true; }
     if (color1 === 0 || color2 === 0) { return false; }
     return color1 % 2 === color2 % 2;
+}
+
+function forEachPosition(callback)
+{
+    for (let x = 0; x < gridSize; x++)
+    {
+        for (let y = 0; y < gridSize; y++)
+        {
+            callback(x, y);
+        }
+    }
 }
 
 function createGrid() 
@@ -98,13 +109,14 @@ function createGrid()
 
 function setPuzzle(puzzle)
 {
-    for (let x = 0; x < puzzle[0].length; x++)
-    {
-        for (let y = 0; y < puzzle.length; y++)
-        {
-            setCellPermanent(x, y, puzzle[y][x]);
-        }
-    }
+    forEachPosition((x, y) => setCellPermanent(x, y, puzzle[y][x]));
+    //for (let x = 0; x < puzzle[0].length; x++)
+    //{
+    //    for (let y = 0; y < puzzle.length; y++)
+    //    {
+    //        setCellPermanent(x, y, puzzle[y][x]);
+    //    }
+    //}
 }
 
 function testSolution()
@@ -136,11 +148,35 @@ function testSolution()
 
 function advance()
 {
-    solveAtIndex(solverPosition);
+    trySolveAtIndex(solverPosition);
     solverPosition++;
     if (solverPosition > 63) { solverPosition = 0; }
     console.log("Advancing to index " + solverPosition);
     updateSolverSquareVisual();
+}
+
+function solve()
+{
+    let safety = 0;
+    while (safety < 99)
+    {
+        let deductionsThisPass = doSolverPass();
+        if (deductionsThisPass === 0) { break; }
+        safety++;
+    }
+    if (safety === 99) { console.log("ERROR: Runaway loop!"); }
+}
+
+function doSolverPass()
+{
+    let curPosition = 0;
+    let deductions = 0;
+    while (curPosition < 64)
+    {
+        if (trySolveAtIndex(curPosition)) { deductions++; }
+        curPosition++;
+    }
+    return deductions;
 }
 
 function updateSolverSquareVisual()
@@ -151,7 +187,7 @@ function updateSolverSquareVisual()
     solverSquare.style.top = y * 40 - 1 + "px";
 }
 
-function solveAtIndex(solverPosition)
+function trySolveAtIndex(solverPosition)
 {
     console.log("Trying to solve at index " + solverPosition);
     let x = solverPosition % gridSize;
@@ -162,14 +198,22 @@ function solveAtIndex(solverPosition)
     let neighborhoodValues = directions.map(direction => getValuesInDirection(position, direction));
     let valToSet = 0;
     valToSet = deduceFromDoubleAdjacent(neighborhoodValues);
-    if (valToSet === 0) { valToSet = deduceFromFlanking(neighborhoodValues); }
-    if (valToSet === 0) { valToSet = deduceFromColorCount(getColumn(x), getRow(y)); }
+    if (valToSet === 0) 
+    { 
+        valToSet = deduceFromFlanking(neighborhoodValues); 
+    }
+    if (valToSet === 0) 
+    { 
+        valToSet = deduceFromColorCount(getColumn(x), getRow(y)); 
+    }
     if (valToSet !== 0)
     {
         console.log("Deduced " + valToSet);
         cellValues[x][y] = valToSet;
         updateCellVisual(x, y);
+        return true;
     }
+    return false;
     //let position = new Vector2(x, y);
     //if (countAdjacentInDirection(position, white, left) === 2 ||
     //countAdjacentInDirection(position, white, left) === 2 ||
@@ -251,32 +295,6 @@ function getValuesInDirection(startPos, direction, count = 2)
         curCount++;
     }
     return values;
-}
-
-function countAdjacentInDirection(startPos, color, direction)
-{
-    console.log("Counting adjacent");
-    //how to check if parameters are vector2s??
-    if (!isValidDirection(direction))
-    {
-        console.log("ERROR: Invalid direction!");
-        return 0;
-    }
-    if (!colors.includes(color))
-    {
-        console.log("ERROR: Invalid color!");
-        return 0;
-    }
-    let count = 0;
-    let curPos = startPos;
-    curPos.add(direction);
-    while (isInBounds(curPos.x, curPos.y) && getColorAt(curPos.x, curPos.y) === color)
-    {
-        console.log("color matches; checking next cell");
-        count++;
-        curPos.add(direction);
-    }
-    return count;
 }
 
 function click(index)
