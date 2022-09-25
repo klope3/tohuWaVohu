@@ -40,6 +40,26 @@ const samplePuzzles = [
         [0,0,0,4,3,0,0,4],
         [0,0,0,3,0,3,0,0],
     ], //seed 8x8dt#155504338199982 (trivial)
+    [
+        [4,0,0,3,3,0,0,0],
+        [0,0,0,0,0,0,4,0],
+        [4,0,0,0,0,0,0,0],
+        [0,0,3,0,3,3,0,0],
+        [4,0,0,0,3,0,4,0],
+        [0,0,0,0,0,0,0,3],
+        [4,0,0,0,0,0,0,0],
+        [0,0,3,0,3,4,0,4],
+    ], //seed 8x8de#848161611013538 (easy)
+    [
+        [0,0,0,0,0,4,0,0],
+        [4,4,0,4,0,0,0,0],
+        [0,0,3,0,0,3,0,0],
+        [0,3,0,0,0,0,4,0],
+        [3,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,0],
+        [0,4,0,0,0,0,0,0],
+        [0,4,0,4,0,4,0,0],
+    ], //seed 8x8dn#456144429065407 (normal)
 ];
 const cellGrid = document.getElementById("cellGrid");
 const solverSquare = document.getElementById("solverSquare");
@@ -62,16 +82,26 @@ const directions =
     new Vector2(0, 1)
 ];
 const [left, up, right, down] = directions;
+const debugMessages = true;
 let solverPosition = 0;
 
 createGrid();
-setPuzzle(samplePuzzles[1]);
-//testSolution();
+setPuzzle(samplePuzzles[3]);
 
 
 //#region functions
 const getColumn = columnX => cellValues[columnX];
 const getRow = rowY => cellValues.map(column => column[rowY]);
+const indexToCoordinates = index => new Vector2(index % gridSize, Math.trunc(index / gridSize));
+
+function countEmptyCells()
+{
+    let emptyCount = 0;
+    forEachPosition((x, y) => {
+        if (cellValues[x][y] === 0) { emptyCount++; }
+    });
+    return emptyCount;
+}
 
 function areColorsEqual(color1, color2)
 {
@@ -110,13 +140,6 @@ function createGrid()
 function setPuzzle(puzzle)
 {
     forEachPosition((x, y) => setCellPermanent(x, y, puzzle[y][x]));
-    //for (let x = 0; x < puzzle[0].length; x++)
-    //{
-    //    for (let y = 0; y < puzzle.length; y++)
-    //    {
-    //        setCellPermanent(x, y, puzzle[y][x]);
-    //    }
-    //}
 }
 
 function testSolution()
@@ -148,23 +171,61 @@ function testSolution()
 
 function advance()
 {
-    trySolveAtIndex(solverPosition);
-    solverPosition++;
-    if (solverPosition > 63) { solverPosition = 0; }
-    console.log("Advancing to index " + solverPosition);
+    //trySolveAtIndex(solverPosition);
+    let solverCoords = indexToCoordinates(solverPosition);
+    let {x, y} = solverCoords;
+    let curValue = cellValues[x][y];
+    modifyCell(x, y);
+    if (cellValues[x][y] === 0)
+    {
+        debugLog("Backing up");
+        solverPosition--;
+        if (solverPosition < 0) { debugLog("Passed start"); }
+    }
+    else if (isCellLegal(x, y))
+    {
+        solverPosition++;
+        debugLog("Advancing to index " + solverPosition);
+        if (solverPosition > 63) { solverPosition = 0; }
+    }
     updateSolverSquareVisual();
+}
+
+function isCellLegal(x, y)
+{
+    let neighborhoodValues = directions.map(direction => getValuesInDirection(position, direction));
+    
 }
 
 function solve()
 {
-    let safety = 0;
-    while (safety < 99)
+    let passes = 0;
+    while (passes < 99)
     {
         let deductionsThisPass = doSolverPass();
-        if (deductionsThisPass === 0) { break; }
-        safety++;
+        passes++;
+        if (deductionsThisPass === 0) 
+        {
+            debugLog(`Pass ${passes} had no deductions`); 
+            break; 
+        }
     }
-    if (safety === 99) { console.log("ERROR: Runaway loop!"); }
+    if (passes === 99)
+    {
+        console.error("ERROR: Runaway loop!");
+        return;
+    }
+    if (countEmptyCells() === 0) 
+    { 
+        debugLog(`SOLVED in ${passes} passes`);
+        return;
+    }
+    doBacktracking();
+}
+
+function doBacktracking()
+{
+    debugLog("Starting backtracking");
 }
 
 function doSolverPass()
@@ -189,7 +250,7 @@ function updateSolverSquareVisual()
 
 function trySolveAtIndex(solverPosition)
 {
-    console.log("Trying to solve at index " + solverPosition);
+    debugLog("Trying to solve at index " + solverPosition);
     let x = solverPosition % gridSize;
     let y = Math.trunc(solverPosition / gridSize);
     if (cellValues[x][y] !== 0) { return; }
@@ -208,20 +269,12 @@ function trySolveAtIndex(solverPosition)
     }
     if (valToSet !== 0)
     {
-        console.log("Deduced " + valToSet);
+        debugLog("Deduced " + valToSet);
         cellValues[x][y] = valToSet;
         updateCellVisual(x, y);
         return true;
     }
     return false;
-    //let position = new Vector2(x, y);
-    //if (countAdjacentInDirection(position, white, left) === 2 ||
-    //countAdjacentInDirection(position, white, left) === 2 ||
-    //countAdjacentInDirection(position, white, left) === 2 ||
-    //countAdjacentInDirection(position, white, left) === 2)
-    //{
-    //    //set to white
-    //}
 }
 
 function deduceFromDoubleAdjacent(neighborhoodValues)
@@ -255,7 +308,7 @@ function deduceFromFlanking(neighborhoodValues)
 
 function deduceFromColorCount(column, row)
 {
-    console.log(`Column length ${column.length}, row length ${row.length}`);
+    debugLog(`Column length ${column.length}, row length ${row.length}`);
     let blackInColumn = column.reduce((accumulator, value) => {
         if (areColorsEqual(value, black)) { accumulator++; }
         return accumulator;
@@ -270,12 +323,12 @@ function deduceFromColorCount(column, row)
     }, 0);
     let whiteInRow = row.reduce((accumulator, value) => {
         if (areColorsEqual(value, white)) { 
-            console.log(value + " is white"); 
+            debugLog(value + " is white"); 
             accumulator++; 
         }
         return accumulator;
     }, 0);
-    console.log(`Black in column: ${blackInColumn}; black in row: ${blackInRow}; whiteInColumn: ${whiteInColumn}; whiteInRow: ${whiteInRow}`);
+    debugLog(`Black in column: ${blackInColumn}; black in row: ${blackInRow}; whiteInColumn: ${whiteInColumn}; whiteInRow: ${whiteInRow}`);
 
     if (blackInColumn === gridSize / 2 || blackInRow === gridSize / 2) { return white; }
     if (whiteInColumn === gridSize / 2 || whiteInRow === gridSize / 2) { return black; }
@@ -301,7 +354,6 @@ function click(index)
 {
     let clickedX = index % gridSize;
     let clickedY = Math.trunc(index / gridSize);
-    // console.log("Clicked " + clickedX + ", " + clickedY);
     modifyCell(clickedX, clickedY);
 }
 
@@ -309,7 +361,7 @@ function getColorAt(x, y)
 {
     if (!isInBounds(x, y))
     {
-        console.log("ERROR: No cell at " + x + ", " + y + "!");
+        debugLog("ERROR: No cell at " + x + ", " + y + "!");
         return -1;
     }
     return cellValues[x][y];
@@ -351,7 +403,6 @@ function modifyCell(x, y)
 
 function updateCellVisual(x, y)
 {
-    console.log("updating");
     let index = (gridSize * y) + x;
     let valHere = cellValues[x][y];
     // console.log("value here is " + valHere);
@@ -369,7 +420,7 @@ function updateCellVisual(x, y)
     else if (valHere === empty) { cell.classList.remove("white"); }
     else if (valHere === blackPermanent) {cell.classList.add("blackPermanent");}
     else if (valHere === whitePermanent) {cell.classList.add("whitePermanent");}
-    else { console.log("invalid value at " + x + ", " + y); }
+    else { debugLog("invalid value at " + x + ", " + y); }
 }
 
 function createCell(index) 
@@ -381,5 +432,10 @@ function createCell(index)
     newCell.addEventListener("click", function() {click(index)});
     newCell.appendChild(innerDiv);
     cellGrid.appendChild(newCell);
+}
+
+function debugLog(message)
+{
+    if (debugMessages) { console.log(message); }
 }
 //#endregion
