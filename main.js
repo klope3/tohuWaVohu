@@ -93,6 +93,15 @@ setPuzzle(samplePuzzles[3]);
 const getColumn = columnX => cellValues[columnX];
 const getRow = rowY => cellValues.map(column => column[rowY]);
 const indexToCoordinates = index => new Vector2(index % gridSize, Math.trunc(index / gridSize));
+const isValuePermanent = value => value > 2;
+
+function getNeighborsFromNeighborhood(neighborhoodValues)
+{
+    return neighborhoodValues.map(item => {
+        if (item.length > 0) { return item[0]; }
+        return undefined;
+    });
+}
 
 function countEmptyCells()
 {
@@ -175,26 +184,66 @@ function advance()
     let solverCoords = indexToCoordinates(solverPosition);
     let {x, y} = solverCoords;
     let curValue = cellValues[x][y];
+    if (isValuePermanent(curValue)) 
+    { 
+        moveSolverPosition(true); 
+        updateSolverSquareVisual();
+        return;
+    }
     modifyCell(x, y);
-    if (cellValues[x][y] === 0)
+    curValue = cellValues[x][y];
+    if (curValue === 0)
     {
-        debugLog("Backing up");
-        solverPosition--;
-        if (solverPosition < 0) { debugLog("Passed start"); }
+        let safety = 0;
+        while (safety < 99 && (curValue === 0 || isValuePermanent(curValue)))
+        { 
+            moveSolverPosition(false); 
+            curValue = cellValues[x][y];
+            safety++;
+        }
+        if (safety === 99) { console.error("Runaway"); }
+        return;
     }
-    else if (isCellLegal(x, y))
-    {
-        solverPosition++;
-        debugLog("Advancing to index " + solverPosition);
-        if (solverPosition > 63) { solverPosition = 0; }
-    }
+    if (isCellLegal(x, y)) { moveSolverPosition(true); }
     updateSolverSquareVisual();
+}
+
+function moveSolverPosition(forward)
+{
+    let incrementor = forward ? 1 : -1;
+    solverPosition += incrementor;
+    let debugMsg = forward ? `Advancing to ${solverPosition}` : `Backing up to ${solverPosition}`;
+    debugLog(debugMsg);
+    if (solverPosition < 0) { debugLog("Passed start"); }
+    if (solverPosition > 63) { solverPosition = 0; }
 }
 
 function isCellLegal(x, y)
 {
+    let colorHere = getColorAt(x, y);
+    let position = new Vector2(x, y);
     let neighborhoodValues = directions.map(direction => getValuesInDirection(position, direction));
-    
+    for (let adjacentPair of neighborhoodValues)
+    {
+        let [val1, val2] = adjacentPair;
+        if (areColorsEqual(colorHere, val1) && areColorsEqual(val1, val2))
+        {
+            console.log("Found three in a row");
+            return false;
+        }
+    }
+    let [left, top, right, bot] = getNeighborsFromNeighborhood(neighborhoodValues);
+    let horzFlankCausesThree = areColorsEqual(left, right) && areColorsEqual(left, colorHere);
+    let vertFlankCausesThree = areColorsEqual(top, bot) && areColorsEqual(top, colorHere);
+    if (horzFlankCausesThree || vertFlankCausesThree) { return false; }
+    let column = getColumn(x);
+    let row = getRow(y);
+    let blackInColumn = countColorInArray(column, black);
+    let blackInRow = countColorInArray(row, black);
+    let whiteInColumn = countColorInArray(column, white);
+    let whiteInRow = countColorInArray(row, white);
+    if (blackInColumn > gridSize / 2 || blackInRow > gridSize / 2 || whiteInColumn > gridSize / 2 || whiteInRow > gridSize / 2) { return false; }
+    return true;
 }
 
 function solve()
@@ -281,10 +330,10 @@ function deduceFromDoubleAdjacent(neighborhoodValues)
 {
     let valToSet = 0;
 
-    neighborhoodValues.map(valuePair => {
-        let [val1, val2] = valuePair;
+    neighborhoodValues.map(adjacentPair => {
+        let [val1, val2] = adjacentPair;
         let equal = areColorsEqual(val1, val2);
-        if (valToSet === 0 && valuePair.length === 2 && equal && val1 !== 0)
+        if (valToSet === 0 && adjacentPair.length === 2 && equal && val1 !== 0)
         {
             valToSet = oppositeColors.get(val1);
         }
@@ -296,38 +345,47 @@ function deduceFromDoubleAdjacent(neighborhoodValues)
 function deduceFromFlanking(neighborhoodValues)
 {
     let valToSet = 0;
-    let neighborValues = neighborhoodValues.map(item => {
-        if (item.length > 0) { return item[0]; }
-        return undefined;
-    })
+    let neighborValues = getNeighborsFromNeighborhood(neighborhoodValues);
     let [left, top, right, bot] = neighborValues;
     if (left + right > 0 && areColorsEqual(left, right)) { valToSet = oppositeColors.get(left); }
     if (top + bot > 0 && areColorsEqual(top, bot)) { valToSet = oppositeColors.get(top); }
     return valToSet;
 }
 
+function countColorInArray(array, color)
+{
+    return array.reduce((accumulator, value) => {
+        if (areColorsEqual(value, color)) { accumulator++; }
+        return accumulator;
+    }, 0);
+}
+
 function deduceFromColorCount(column, row)
 {
     debugLog(`Column length ${column.length}, row length ${row.length}`);
-    let blackInColumn = column.reduce((accumulator, value) => {
-        if (areColorsEqual(value, black)) { accumulator++; }
-        return accumulator;
-    }, 0);
-    let blackInRow = row.reduce((accumulator, value) => {
-        if (areColorsEqual(value, black)) { accumulator++; }
-        return accumulator;
-    }, 0);
-    let whiteInColumn = column.reduce((accumulator, value) => {
-        if (areColorsEqual(value, white)) { accumulator++; }
-        return accumulator;
-    }, 0);
-    let whiteInRow = row.reduce((accumulator, value) => {
-        if (areColorsEqual(value, white)) { 
-            debugLog(value + " is white"); 
-            accumulator++; 
-        }
-        return accumulator;
-    }, 0);
+    let blackInColumn = countColorInArray(column, black);
+    let blackInRow = countColorInArray(row, black);
+    let whiteInColumn = countColorInArray(column, white);
+    let whiteInRow = countColorInArray(row, white);
+    //let blackInColumn = column.reduce((accumulator, value) => {
+    //    if (areColorsEqual(value, black)) { accumulator++; }
+    //    return accumulator;
+    //}, 0);
+    //let blackInRow = row.reduce((accumulator, value) => {
+    //    if (areColorsEqual(value, black)) { accumulator++; }
+    //    return accumulator;
+    //}, 0);
+    //let whiteInColumn = column.reduce((accumulator, value) => {
+    //    if (areColorsEqual(value, white)) { accumulator++; }
+    //    return accumulator;
+    //}, 0);
+    //let whiteInRow = row.reduce((accumulator, value) => {
+    //    if (areColorsEqual(value, white)) { 
+    //        debugLog(value + " is white"); 
+    //        accumulator++; 
+    //    }
+    //    return accumulator;
+    //}, 0);
     debugLog(`Black in column: ${blackInColumn}; black in row: ${blackInRow}; whiteInColumn: ${whiteInColumn}; whiteInRow: ${whiteInRow}`);
 
     if (blackInColumn === gridSize / 2 || blackInRow === gridSize / 2) { return white; }
